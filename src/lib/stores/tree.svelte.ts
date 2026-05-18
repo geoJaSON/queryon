@@ -54,7 +54,10 @@ export async function toggleSchema(schema: string) {
   tree.expanded = new Set(tree.expanded);
   if (tree.objects[schema] === undefined && tree.connId !== null) {
     try {
-      tree.objects[schema] = await ipc.listObjects(tree.connId, schema);
+      const objs = await ipc.listObjects(tree.connId, schema);
+      // Reassign (don't mutate in place) so the template re-reads the new
+      // key — same reactivity pattern used for `tree.expanded` above.
+      tree.objects = { ...tree.objects, [schema]: objs };
     } catch (e) {
       reportError(e, `Could not list objects in ${schema}`);
       tree.expanded.delete(schema);

@@ -68,7 +68,7 @@
   }
 </script>
 
-<div class="grid">
+<div class="grid" style="--cols:{result.columns.length}">
   <div class="gbar">
     <span class="faint">{result.rows.length} rows{result.truncated ? " (truncated)" : ""}</span>
     <span class="spacer"></span>

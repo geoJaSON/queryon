@@ -65,10 +65,18 @@ impl ServerCertVerifier for NoVerify {
 }
 
 fn tls_connector() -> MakeRustlsConnect {
-    let cfg = rustls::ClientConfig::builder()
-        .dangerous()
-        .with_custom_certificate_verifier(Arc::new(NoVerify))
-        .with_no_client_auth();
+    // rustls 0.23 with `default-features = false` does NOT install a
+    // process-level default CryptoProvider, so `ClientConfig::builder()`
+    // would panic. Pass the `ring` provider explicitly instead of relying
+    // on global install ordering.
+    let cfg = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .expect("ring provider supports the safe default protocol versions")
+    .dangerous()
+    .with_custom_certificate_verifier(Arc::new(NoVerify))
+    .with_no_client_auth();
     MakeRustlsConnect::new(cfg)
 }
 
