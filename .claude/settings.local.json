@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --version)",
+      "Bash(echo \"pnpm: $\\(pnpm --version 2>/dev/null\\)\")",
+      "Bash(cargo --version)",
+      "Bash(echo \"cargo: $\\(cargo --version 2>/dev/null\\)\")",
+      "Bash(rustc --version)",
+      "Bash(pnpm create *)",
+      "Bash(cd \"c:/Users/jason/Documents/Dev/queryon\" && rm -rf src static .vscode src/routes src/app.html svelte.config.js vite.config.js tsconfig.json && mkdir -p src/lib/stores src/lib/components src-tauri/src/db src-tauri/src/store src-tauri/src/commands && ls -la && echo \"cleaned\")",
+      "Bash(pnpm install *)",
+      "Bash(cargo check *)",
+      "Bash(pnpm check *)",
+      "Bash(docker --version)",
+      "Bash(pnpm build *)",
+      "Bash(cargo build *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\jason\\Documents\\Dev\\queryon\\.vscode"
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Queryon",
+  "version": "0.1.0",
+  "identifier": "com.queryon.app",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "QUERYON",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 880,
+        "minHeight": 560
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "publisher": "Jason",
+    "copyright": "© 2026 Jason",
+    "category": "DeveloperTool",
+    "shortDescription": "Retro-terminal PostGIS/PostgreSQL manager",
+    "longDescription": "Queryon — a no-frills phosphor-terminal desktop client for managing PostGIS/PostgreSQL: connections, roles, schemas, SQL execution, table browsing, history and export.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": { "type": "embedBootstrapper" }
+    }
+  }
+}
