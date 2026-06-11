@@ -33,8 +33,10 @@ export const ipc = {
   deleteConnection: (id: number) =>
     invoke<void>("delete_connection", { id }),
 
-  testConnection: (id: number) =>
-    invoke<ServerInfo>("test_connection", { id }),
+  /** Test raw form input without persisting anything. `id` is the profile
+   *  being edited (if any) so a blank password falls back to the keychain. */
+  testConnection: (profile: ConnectionInput, id: number | null) =>
+    invoke<ServerInfo>("test_connection", { profile, id }),
 
   openConnection: (id: number) =>
     invoke<ServerInfo>("open_connection", { id }),

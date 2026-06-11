@@ -3,13 +3,14 @@
 
 use deadpool_postgres::Pool;
 
+use crate::db::pool::NoticeSink;
 use crate::error::AppResult;
 use crate::models::ServerInfo;
 use crate::state::PoolEntry;
 
 /// Probe a freshly built pool: server version, PostGIS version, and the
 /// geometry/geography type OIDs (which vary per database).
-pub async fn probe(pool: Pool) -> AppResult<(ServerInfo, PoolEntry)> {
+pub async fn probe(pool: Pool, notices: NoticeSink) -> AppResult<(ServerInfo, PoolEntry)> {
     let client = pool.get().await?;
 
     let version: String = client.query_one("SELECT version()", &[]).await?.get(0);
@@ -42,6 +43,7 @@ pub async fn probe(pool: Pool) -> AppResult<(ServerInfo, PoolEntry)> {
         pool,
         geometry_oid,
         geography_oid,
+        notices,
     };
     Ok((info, entry))
 }

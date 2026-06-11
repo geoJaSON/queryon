@@ -18,7 +18,8 @@
       {s.elapsed_ms} ms{s.truncated ? " (truncated)" : ""}
     </div>
     {#each s.notices as n}
-      <div class="line notice">NOTICE: {n}</div>
+      <!-- Already prefixed with the server severity (NOTICE/WARNING/...). -->
+      <div class="line notice">{n}</div>
     {/each}
   {/each}
   {#if !error && statements.length === 0}

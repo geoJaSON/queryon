@@ -6,23 +6,31 @@
 
 use std::time::Instant;
 
+use futures_util::{pin_mut, TryStreamExt};
+use tokio_postgres::types::ToSql;
 use tokio_postgres::SimpleQueryMessage;
 
+use crate::db::pool::NoticeSink;
 use crate::db::value;
 use crate::error::AppResult;
 use crate::models::{SqlExecResult, StatementResult};
 
 pub const DEFAULT_MAX_ROWS: usize = 10_000;
 
+fn drain_notices(sink: &NoticeSink) -> Vec<String> {
+    std::mem::take(&mut *sink.lock().unwrap())
+}
+
 /// Execute against an already-checked-out client (so the caller can hold its
 /// `cancel_token()` for the duration). `geom`/`geog` are the connection's
-/// PostGIS OIDs.
+/// PostGIS OIDs; `notices` is the pool's NOTICE sink, drained per statement.
 pub async fn run_sql(
     client: &tokio_postgres::Client,
     geom: Option<u32>,
     geog: Option<u32>,
     sql: &str,
     max_rows: usize,
+    notices: &NoticeSink,
 ) -> AppResult<SqlExecResult> {
     let mut statements = Vec::new();
 
@@ -44,10 +52,9 @@ pub async fn run_sql(
                         command_tag: format!("{} {}", verb(s), n),
                         elapsed_ms: ms(started),
                         truncated: false,
-                        notices: vec![],
+                        notices: drain_notices(notices),
                     });
                 } else {
-                    let rows = client.query(&prepared, &[]).await?;
                     let cols: Vec<_> = prepared
                         .columns()
                         .iter()
@@ -60,18 +67,25 @@ pub async fn run_sql(
                             )
                         })
                         .collect();
-                    let truncated = rows.len() > max_rows;
-                    let mut data = Vec::with_capacity(rows.len().min(max_rows));
-                    for r in rows.iter().take(max_rows) {
+                    // Stream rows so a huge result set cannot exhaust memory;
+                    // stop consuming once the cap is hit (dropping the stream
+                    // discards whatever the server still has buffered).
+                    let col_types: Vec<_> =
+                        prepared.columns().iter().map(|c| c.type_().clone()).collect();
+                    let stream = client
+                        .query_raw(&prepared, Vec::<&(dyn ToSql + Sync)>::new())
+                        .await?;
+                    pin_mut!(stream);
+                    let mut data: Vec<Vec<Option<String>>> = Vec::new();
+                    let mut truncated = false;
+                    while let Some(r) = stream.try_next().await? {
+                        if data.len() >= max_rows {
+                            truncated = true;
+                            break;
+                        }
                         let mut cells = Vec::with_capacity(cols.len());
-                        for (i, c) in prepared.columns().iter().enumerate() {
-                            cells.push(value::cell(
-                                r,
-                                i,
-                                c.type_(),
-                                geom,
-                                geog,
-                            ));
+                        for (i, ty) in col_types.iter().enumerate() {
+                            cells.push(value::cell(&r, i, ty, geom, geog));
                         }
                         data.push(cells);
                     }
@@ -83,7 +97,7 @@ pub async fn run_sql(
                         command_tag: format!("SELECT {rc}"),
                         elapsed_ms: ms(started),
                         truncated,
-                        notices: vec![],
+                        notices: drain_notices(notices),
                     });
                 }
             }
@@ -103,7 +117,7 @@ pub async fn run_sql(
                     command_tag: tag,
                     elapsed_ms: ms(started),
                     truncated: false,
-                    notices: vec![],
+                    notices: drain_notices(notices),
                 });
             }
         }

@@ -119,6 +119,9 @@ pub struct ColumnInfo {
     pub name: String,
     pub data_type: String,
     pub udt_name: String,
+    /// Schema of the underlying type (`pg_catalog` for builtins) — used to
+    /// schema-qualify casts in the filter builder.
+    pub udt_schema: String,
     pub nullable: bool,
     pub default: Option<String>,
     pub is_pk: bool,

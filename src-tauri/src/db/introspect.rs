@@ -1,7 +1,7 @@
 //! Schema introspection + a safe, server-generated table-page query
 //! (geometry columns projected as EWKT).
 
-use tokio_postgres::types::ToSql;
+use tokio_postgres::types::{ToSql, Type};
 
 use crate::db::sql_util::qident;
 use crate::db::value;
@@ -96,7 +96,7 @@ pub async fn describe_table(
 
     let col_rows = client
         .query(
-            "SELECT column_name, data_type, udt_name, is_nullable, column_default
+            "SELECT column_name, data_type, udt_name, udt_schema, is_nullable, column_default
              FROM information_schema.columns
              WHERE table_schema = $1 AND table_name = $2
              ORDER BY ordinal_position",
@@ -121,15 +121,16 @@ pub async fn describe_table(
         .map(|r| {
             let name: String = r.get(0);
             let udt: String = r.get(2);
-            let nullable: String = r.get(3);
+            let nullable: String = r.get(4);
             ColumnInfo {
                 is_pk: pks.contains(&name),
                 is_geometry: udt == "geometry" || udt == "geography",
                 name,
                 data_type: r.get(1),
                 udt_name: udt,
+                udt_schema: r.get(3),
                 nullable: nullable == "YES",
-                default: r.get(4),
+                default: r.get(5),
             }
         })
         .collect();
@@ -190,8 +191,8 @@ pub async fn fetch_table_page(
             "{schema}.{table} has no columns or is not visible"
         )));
     }
-    let valid: std::collections::HashSet<&str> =
-        meta.columns.iter().map(|c| c.name.as_str()).collect();
+    let by_name: std::collections::HashMap<&str, &ColumnInfo> =
+        meta.columns.iter().map(|c| (c.name.as_str(), c)).collect();
 
     // Projection — geometry/geography wrapped as EWKT (or GeoJSON).
     let proj = meta
@@ -214,22 +215,34 @@ pub async fn fetch_table_page(
         qident(table)
     );
 
-    // Parameterized WHERE.
+    // Parameterized WHERE. All parameters are bound as TEXT (see
+    // `prepare_typed` below); comparison values are cast server-side to the
+    // column's own type so filters work on int/uuid/date/... columns, while
+    // LIKE/ILIKE compare the column as text.
     let mut params: Vec<Box<dyn ToSql + Sync + Send>> = Vec::new();
     let mut clauses: Vec<String> = Vec::new();
     for f in &filters {
-        if !valid.contains(f.column.as_str()) {
+        let Some(col_info) = by_name.get(f.column.as_str()) else {
             return Err(AppError::msg(format!("unknown filter column: {}", f.column)));
-        }
+        };
         if !ALLOWED_OPS.contains(&f.op.as_str()) {
             return Err(AppError::msg(format!("unsupported operator: {}", f.op)));
         }
         let col = qident(&f.column);
         if f.op == "IS NULL" || f.op == "IS NOT NULL" {
             clauses.push(format!("{col} {}", f.op));
+        } else if f.op == "LIKE" || f.op == "ILIKE" {
+            params.push(Box::new(f.value.clone().unwrap_or_default()));
+            clauses.push(format!("{col}::text {} ${}", f.op, params.len()));
         } else {
             params.push(Box::new(f.value.clone().unwrap_or_default()));
-            clauses.push(format!("{col} {} ${}", f.op, params.len()));
+            clauses.push(format!(
+                "{col} {} ${}::{}.{}",
+                f.op,
+                params.len(),
+                qident(&col_info.udt_schema),
+                qident(&col_info.udt_name)
+            ));
         }
     }
     if !clauses.is_empty() {
@@ -238,7 +251,7 @@ pub async fn fetch_table_page(
     }
 
     if let Some(s) = &sort {
-        if !valid.contains(s.column.as_str()) {
+        if !by_name.contains_key(s.column.as_str()) {
             return Err(AppError::msg(format!("unknown sort column: {}", s.column)));
         }
         sql.push_str(&format!(
@@ -258,7 +271,12 @@ pub async fn fetch_table_page(
         .iter()
         .map(|b| b.as_ref() as &(dyn ToSql + Sync))
         .collect();
-    let rows = client.query(sql.as_str(), &param_refs).await?;
+    // Declare every parameter as TEXT so Rust `String` values always encode;
+    // the SQL casts them to the column type server-side.
+    let stmt = client
+        .prepare_typed(&sql, &vec![Type::TEXT; params.len()])
+        .await?;
+    let rows = client.query(&stmt, &param_refs).await?;
 
     let columns: Vec<_> = if let Some(r) = rows.first() {
         r.columns()

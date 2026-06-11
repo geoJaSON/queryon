@@ -64,19 +64,35 @@ pub async fn delete_connection(state: State<'_, AppState>, id: ConnId) -> AppRes
     Ok(())
 }
 
-/// Build a throwaway pool and verify it works without registering it.
+/// Build a throwaway pool from raw form input and verify it works — nothing
+/// is persisted. `id` is the profile being edited (if any) so a blank
+/// password can fall back to the stored keychain secret.
 #[tauri::command]
 pub async fn test_connection(
-    state: State<'_, AppState>,
-    id: ConnId,
+    profile: ConnectionInput,
+    id: Option<ConnId>,
 ) -> AppResult<ServerInfo> {
-    let profile = {
-        let conn = state.store.lock().unwrap();
-        cstore::get(&conn, id)?
+    let password = match &profile.password {
+        Some(pw) if !pw.is_empty() => pw.clone(),
+        _ => match id {
+            Some(i) => secrets::get_password(i)?,
+            None => String::new(),
+        },
     };
-    let password = secrets::get_password(id)?;
-    let p = pool::build_pool(&profile, &password)?;
-    let (info, _entry) = connect::probe(p).await?;
+    let temp = ConnectionProfile {
+        id: id.unwrap_or(0),
+        name: profile.name,
+        host: profile.host,
+        port: profile.port,
+        database: profile.database,
+        username: profile.username,
+        ssl_mode: profile.ssl_mode,
+        color: None,
+        created_at: String::new(),
+        updated_at: String::new(),
+    };
+    let (p, sink) = pool::build_pool(&temp, &password)?;
+    let (info, _entry) = connect::probe(p, sink).await?;
     Ok(info)
 }
 
@@ -90,8 +106,8 @@ pub async fn open_connection(
         cstore::get(&conn, id)?
     };
     let password = secrets::get_password(id)?;
-    let p = pool::build_pool(&profile, &password)?;
-    let (info, entry) = connect::probe(p).await?;
+    let (p, sink) = pool::build_pool(&profile, &password)?;
+    let (info, entry) = connect::probe(p, sink).await?;
     state.set_pool(id, entry);
     Ok(info)
 }

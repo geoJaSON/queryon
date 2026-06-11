@@ -86,6 +86,8 @@ export interface ColumnInfo {
   name: string;
   data_type: string;
   udt_name: string;
+  /** Schema of the underlying type ("pg_catalog" for builtins). */
+  udt_schema: string;
   nullable: boolean;
   default: string | null;
   is_pk: boolean;

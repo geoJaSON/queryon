@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import type { Tab } from "../stores/tabs.svelte";
   import { conns } from "../stores/connections.svelte";
   import { ipc } from "../ipc";
@@ -85,20 +86,28 @@
   }
 
   $effect(() => {
-    // (Re)load when the tab's target changes.
+    // (Re)load when the tab's target changes. `untrack` keeps the effect off
+    // the paging/sort/filter state read inside load() — those changes already
+    // call load() explicitly, and tracking them here caused racing duplicate
+    // fetches.
+    void tab.schema;
     void tab.table;
-    loadMeta();
-    load();
+    untrack(() => {
+      loadMeta();
+      load();
+    });
   });
 
   const cur = $derived(tab.result?.statements[0] ?? null);
+  /** A short page means there is no further page to fetch. */
+  const lastPage = $derived(!!cur && cur.rows.length < pageSize);
 </script>
 
 <div class="tv">
   <div class="toolbar">
     <button onclick={prev} disabled={page === 0 || tab.running}>◂ prev</button>
     <span class="pg">page {page + 1}</span>
-    <button onclick={next} disabled={tab.running}>next ▸</button>
+    <button onclick={next} disabled={tab.running || lastPage}>next ▸</button>
     <label class="inl">rows
       <select bind:value={pageSize} onchange={() => { page = 0; load(); }}>
         <option value={50}>50</option>

@@ -62,20 +62,12 @@
   async function test() {
     busy = true;
     try {
-      // Persist first so the backend can build a pool and resolve the password.
-      let id: number;
-      if (isEdit && profile) {
-        await ipc.updateConnection(profile.id, build());
-        id = profile.id;
-      } else {
-        id = (await ipc.saveConnection(build())).id;
-      }
-      const info = await ipc.testConnection(id);
+      // Tests the form as-is — nothing is persisted until "save".
+      const info = await ipc.testConnection(build(), profile?.id ?? null);
       pushToast(
         "ok",
         `OK — ${info.version}${info.postgis_version ? ` / PostGIS ${info.postgis_version}` : ""}`,
       );
-      onsaved();
     } catch (e) {
       reportError(e, "Connection test failed");
     } finally {

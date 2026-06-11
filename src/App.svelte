@@ -36,7 +36,11 @@
       <TabBar />
       <div class="tabview">
         {#if current && current.kind === "sql"}
-          <SqlEditorTab tab={current} />
+          <!-- Keyed so each tab gets its own CodeMirror instance; without
+               this, switching SQL tabs reuses one editor and its buffer. -->
+          {#key current.id}
+            <SqlEditorTab tab={current} />
+          {/key}
         {:else if current && current.kind === "table"}
           {#key current.id}
             <TableViewTab tab={current} />
